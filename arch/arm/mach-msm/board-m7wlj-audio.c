@@ -24,7 +24,6 @@
 #include <mach/rt5501.h>
 #include "../sound/soc/msm/msm-pcm-routing.h"
 #include "../sound/soc/msm/msm-compr-q6.h"
-#define RCV_PAMP_GPIO 67
 
 static atomic_t q6_effect_mode = ATOMIC_INIT(-1);
 extern unsigned int system_rev;
@@ -76,7 +75,6 @@ int apq8064_get_q6_effect_mode(void)
 {
 	int mode = atomic_read(&q6_effect_mode);
 	pr_info("%s: mode %d\n", __func__, mode);
-	WARN_ON(1);
 	return mode;
 }
 

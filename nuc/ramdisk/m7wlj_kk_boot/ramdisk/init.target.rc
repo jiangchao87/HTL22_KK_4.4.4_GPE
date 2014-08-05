@@ -39,13 +39,18 @@ service qcamerasvr /system/bin/mm-qcamera-daemon
 #    group qcom_oncrpc
 
 # on emmc mount the partition containing firmware
-on fs
+on emmc-fs
    mkdir /system
    devwait emmc@system
-   mount ext4 emmc@system /system ro noatime barrier=1
+   mount ext4 emmc@system /system rw noatime barrier=0
+   insmod /system/lib/modules/texfat.ko
+   insmod /system/lib/modules/exfat.ko
 
-   # For native linux version
+   # Load Mocana FIPS module. Add here since it can make sure system is mounted
+   insmod /system/lib/modules/moc_platform_mod.ko
+   insmod /system/lib/modules/moc_crypto.ko
    insmod /system/lib/modules/dm-crypt.ko
+   insmod /system/lib/modules/ecryptfs.ko
 
    mkdir /data 0771 system system
    devwait emmc@userdata
@@ -59,7 +64,6 @@ on fs
    devwait emmc@devlog
    e2fsck emmc@devlog
    mount ext4 emmc@devlog /devlog nosuid nodev noatime barrier=1,errors=continue
-   chmod 0700 /devlog
 
    mkdir /ramdump 0700 root root
    devwait emmc@reserve
@@ -68,20 +72,19 @@ on fs
 
    mkdir /data/tombstones 0771 system system
    symlink /data/tombstones /tombstones
-   mkdir /tombstones/mdm 0771 system system
+   mkdir /tombstones/mdm 0775 system system
    mkdir /tombstones/modem 0771 system system
    mkdir /tombstones/lpass 0771 system system
    mkdir /tombstones/dsps 0771 system system
 
    # For firmwares
    mkdir /firmware 0771 system system
-   rm /vendor
    mkdir /vendor 0771 system system
    mkdir /vendor/firmware 0771 system system
 
    # 8064 has only mdm, use radio partition for it.
    mkdir /firmware/mdm 0771 system system
-   wait emmc@radio
+   devwait emmc@radio
    mount vfat emmc@radio /firmware/mdm ro shortname=lower
    exec /system/bin/sh /init.qcom.firmware_links.sh /firmware/mdm/image /vendor/firmware "*.mbn *.img"
 
@@ -96,18 +99,18 @@ on fs
    chmod 2775 /data/audio
 
    mkdir /firmware/q6 0771 system system
-   wait emmc@adsp
+   devwait emmc@adsp
    mount vfat emmc@adsp /firmware/q6 ro shortname=lower
    exec /system/bin/sh /init.qcom.firmware_links.sh /firmware/q6 /vendor/firmware "q6.*"
 
    # QSEE secure application : keymaster
    exec /system/bin/sh /init.qcom.firmware_links.sh /system/vendor/firmware /vendor/firmware "keymaster.*"
 
-   #Create nfc fw link in vendor/firmware
-   exec /system/bin/sh /init.qcom.firmware_links.sh /system/vendor/firmware /vendor/firmware "libpn544_fw.so"
-
    # link widevine drm library path
    symlink /system/vendor/lib /vendor/lib
+
+   # dtcpip cryptobox
+   mkdir /data/cryptobox 0771 system system
 
 on init
     # for Invense MPU3050
@@ -191,6 +194,7 @@ on init
     chown system system /sys/class/htc_g_sensor/g_sensor/tap_shock
     chown system system /sys/class/htc_g_sensor/g_sensor/tap_threshold
     chown system system /sys/class/htc_g_sensor/g_sensor/enable_cir_interrupt
+    chown system system /sys/class/bma250_powerkey/bma250/clear_powerkey_flag
     chown system system /sys/class/bma250/bma250/enable
     chmod 0660 /sys/class/htc_g_sensor/g_sensor/bandwidth
     chmod 0660 /sys/class/htc_g_sensor/g_sensor/chip_layout
@@ -227,6 +231,7 @@ on init
     chmod 0660 /sys/class/htc_g_sensor/g_sensor/tap_threshold
     chmod 0660 /sys/class/htc_g_sensor/g_sensor/enable_cir_interrupt
     chmod 0660 /sys/class/bma250/bma250/enable
+    chmod 0660 /sys/class/bma250_powerkey/bma250/clear_powerkey_flag
 
     #htc cir
     chown system system /sys/class/htc_cir/cir/reset_cir
@@ -238,6 +243,7 @@ on init
     chown root root /devlog
     chmod 0700 /devlog
 
+    # setup the global environment
     # See storage config details at http://source.android.com/tech/storage/
     mkdir /mnt/shell/emulated 0700 shell shell
     mkdir /storage/emulated 0555 root root
@@ -272,7 +278,6 @@ on post-fs-data
     mkdir /data/radio 0770 radio radio
     chmod 2770 /data/radio
 #+SSD_RIL: from Qualcomm socket path
-    mkdir /dev/socket/qmux_radio 0770 radio radio
     mkdir /dev/socket/qmux_audio 0770 audio audio
     mkdir /dev/socket/qmux_bluetooth 0770 bluetooth bluetooth
 #-SSD_RIL: from Qualcomm socket path
@@ -366,8 +371,6 @@ on boot
 # permissions for NFC
     chmod 0600 /dev/pn544
     chown nfc nfc /dev/pn544
-	setprop debug.nfc.fw_download "true"
-	setprop debug.nfc.fw_boot_download "false"
 
     # disable L27 S3 static pull down disable
     write /sys/kernel/debug/pm8921-dbg/addr 0x0E3
@@ -390,8 +393,7 @@ on boot
 
     # Change owner and group for media server and surface flinger
     chown system system /sys/devices/virtual/graphics/fb1/format_3d
-    chown system system /sys/devices/platform/kgsl-3d0.0/kgsl/kgsl-3d0/overrides
-
+    chown system system /sys/devices/virtual/graphics/fb1/hpd
 #++SSD_GPS
     mkdir /dev/socket/qmux_gps 0770 gps gps
 
@@ -438,8 +440,12 @@ on boot
 	chmod 0664 /proc/driver/hdf
 
 #For HSIC ITC
-    chown radio radio /dev/htc_hsicctl
-    chmod 0660 /dev/htc_hsicctl
+	    chown radio radio /dev/htc_hsicctl
+	    chmod 0660 /dev/htc_hsicctl
+
+#For HSIC_EDIAG
+    chown system system /dev/ttyUSB2
+    chmod 0660 /dev/ttyUSB2
 
 #set touch permissions
     chown system system /sys/android_touch/unlock
@@ -471,6 +477,13 @@ on boot
 # Increased technology maximums should be reflected here.
     write /proc/sys/net/core/rmem_max  1220608
     write /proc/sys/net/core/wmem_max  1220608
+    
+    # Discretix DRM change start
+    mkdir /data/DxDrm
+    mkdir /data/DxDrm/fuse
+    chmod 555 /data/DxDrm
+    mkdir /sdcard/download
+    # Discretix DRM change end
 
 # To prevent out of order acknowledgements from making
 # connection tracking to treat them as not belonging to
@@ -479,6 +492,21 @@ on boot
 # connections on high-throughput links get dropped when
 # an ack packet comes out of order
     write /proc/sys/net/netfilter/nf_conntrack_tcp_be_liberal 1
+
+service zchgd_offmode /system/bin/zchgd -pseudooffmode -autostop
+    user root
+    group root graphics
+    disabled
+
+service clockd /system/bin/clockd
+	class main
+	user root
+
+service qb_offmode_alarm /system/bin/qb_offmode_alarm
+	class main
+	user root
+	disabled
+	oneshot
 
 service kickstart /system/bin/qcks -1 modem_st1 -2 modem_st2 -3 radio_config -4 cdma_record -i /vendor/firmware/
 		class core
@@ -522,7 +550,6 @@ service usf-post-boot /system/bin/sh /system/etc/usf_post_boot.sh
 # create virtual SD card at /mnt/sdcard, based on the /data/media directory
 # daemon will drop to user/group system/media_rw after initializing
 # underlying files in /data/media will be created with user and group media_rw (1023)
-# virtual sdcard daemon running as media_rw (1023)
 service sdcard /system/bin/sdcard -u 1023 -g 1023 -l /data/media /mnt/shell/emulated
     class late_start
 
@@ -578,11 +605,6 @@ service iprenew_p2p /system/bin/dhcpcd -n
 on property:init.svc.bootanim=stopped
     start usf-post-boot
 
-service priorityd /system/bin/sh /system/etc/priorityd.sh
-    user root
-    disabled
-    oneshot
-
 #++SSD_BT
 service dhcpcd_bt-pan /system/bin/dhcpcd -ABKL
     disabled
@@ -602,7 +624,7 @@ service dmagent /system/bin/dmagent -N -P19 -VSY
 service qmuxd /system/bin/qmuxd
     class core
     user radio
-    group radio audio gps
+    group radio audio gps bluetooth
 
 service netmgrd /system/bin/netmgrd
     class core
@@ -632,6 +654,12 @@ service hdmid /system/bin/hdmid
 
 on property:ro.hdmi.enable=true
     start hdmid
+
+service tpd /sbin/tpd
+    class core
+    cgroup bg
+    user root
+
 
 # for USB internet sharing
 service udhcpd /system/bin/udhcpd
@@ -679,18 +707,6 @@ service bootcomplete /system/bin/bootcomplete
     disabled
     oneshot
 
-service shutdown /system/bin/shutdown
-    user root
-    group root
-    disabled
-    oneshot
-
-service charging /system/bin/charging
-    user root
-    group root
-    disabled
-    oneshot
-
 service htc_ebdlogd /system/bin/htc_ebdlogd -s -k -P 7
     user root
     cgroup bg
@@ -704,6 +720,11 @@ service htc_ebdlogd_rel /system/bin/htc_ebdlogd -s -k
     disabled
     oneshot
     ioprio idle 0
+    
+# Discretix DRM change start
+service dx_drm_server /system/bin/DxDrmServerIpc -f -o allow_other /data/DxDrm/fuse
+    class main
+# Discretix DRM change end
 
 # Widevine DRM start
 service qseecomd /system/bin/qseecomd
@@ -717,6 +738,12 @@ service hcheck /system/bin/hcheck
     group system
     oneshot
 # Widevine DRM end
+
+# DTCPIP CRYPTOBOX
+service cryptobox_server /system/bin/cryptobox_server
+    class late_start
+    user system
+    group system drmrpc drm
 
 # compass/accelerometer daemon
 service akmd /system/bin/akmd
@@ -744,6 +771,14 @@ service cir_fw_update /system/bin/cir_fw_update -u cir.img
     oneshot
 # HTC CIR firmware update - END
 
+#++SSD_WIFI
+service wifi-crda /system/bin/sh /system/etc/init.crda.sh
+   class late_start
+   user root
+   disabled
+   oneshot
+#--SSD_WIFI  
+   
 #++SSD_BT
 on fs
     ## BCM4335 only
@@ -753,4 +788,37 @@ on fs
     ## BT HID
     chmod 0600 /dev/uhid
     chown bluetooth bluetooth /dev/uhid
+
+    ## BT FOTA
+service btbkbluez /system/bin/sh /system/etc/bt_bk_bluez.sh
+    class late_start
+    user root
+    oneshot
 #--SSD_BT
+
+# Felica - BEGIN
+service felica_daemon /system/bin/felica_daemon
+    class late_start
+    oneshot
+
+service felica_agent /system/bin/felica_agent
+    class late_start
+    oneshot
+# Felica - END
+
+#One-seg services - BEGIN
+service jelly /system/bin/jellyservice
+    class late_start
+    user root
+    group drm system audio camera graphics inet net_bt net_bt_admin net_raw sdcard_rw
+
+service mtvmf /system/bin/mtvmfservice
+    class late_start
+    user system
+    group system audio camera graphics inet net_bt net_bt_admin net_raw sdcard_rw
+
+service mtvmfrec /system/bin/mtvmfrecservice
+    class late_start
+    user system
+    group system audio camera graphics inet net_bt net_bt_admin net_raw sdcard_rw
+#One-seg services - END

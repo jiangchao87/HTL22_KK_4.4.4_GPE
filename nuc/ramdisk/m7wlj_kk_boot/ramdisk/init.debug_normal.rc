@@ -1,0 +1,16 @@
+# AUTO GENERATED, DO NOT EDIT!
+
+on init
+# devlog
+    chmod 0755 /devlog
+
+# action after FS is done
+on post-fs
+    chmod 0777 /system/bin/htcpreloader
+
+# htcpreloader for SSD Test Tool
+service htcpreloader /system/bin/htcpreloader exec /system/bin/htcserviced -d
+    class main
+    cgroup bg
+    oneshot
+

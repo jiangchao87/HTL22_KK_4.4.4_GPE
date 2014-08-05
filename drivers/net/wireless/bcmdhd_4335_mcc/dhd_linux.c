@@ -3391,7 +3391,7 @@ printf("Read PCBID = %x\n", system_rev);
 	strcpy(nvram_path, "/system/etc/calibration.gpio4");
 #endif
 
-#ifdef CONFIG_MACH_ZARA_CL
+#ifdef CONFIG_MACH_DUMMY
 	strcpy(nvram_path, "/system/etc/calibration.gpio4");
 #endif
 

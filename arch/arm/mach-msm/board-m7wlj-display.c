@@ -2901,7 +2901,7 @@ static const struct i2c_device_id pwm_i2c_id[] = {
 static int pwm_i2c_probe(struct i2c_client *client,
 			const struct i2c_device_id *id)
 {
-	int rc = 0;
+	int rc;
 
 	if (!i2c_check_functionality(client->adapter,
 				     I2C_FUNC_SMBUS_BYTE | I2C_FUNC_I2C))

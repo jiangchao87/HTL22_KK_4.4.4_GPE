@@ -1088,7 +1088,6 @@ static int soc_dpcm_be_dai_startup(struct snd_soc_pcm_runtime *fe, int stream)
 	struct snd_soc_dpcm_params *dpcm_params;
 	int err, count = 0;
 
-	WARN_ON(1);
 	
 	list_for_each_entry(dpcm_params, &fe->dpcm[stream].be_clients, list_be) {
 
